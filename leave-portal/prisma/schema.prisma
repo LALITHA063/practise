@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Roles for access control
+enum Role {
+  STUDENT
+  FACULTY
+  HOD
+  WARDEN
+  GATE
+}
+
+// Student residency type
+enum StudentType {
+  DAY_SCHOLAR
+  HOSTELLER
+}
+
+// Leave categories
+enum LeaveCategory {
+  COLLEGE // absence from classes (day scholar flow)
+  HOSTEL  // hostel outpass (hosteller flow)
+}
+
+// Overall leave status
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ESCALATED // e.g., to HOD
+}
+
+// Status for each approval step
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  MEET_HOD    // request student to meet HOD -> escalates
+  ESCALATED   // step created due to escalation
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
+  name         String?
+  role         Role         @default(STUDENT)
+  studentType  StudentType?
+  phone        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  leaves       LeaveRequest[] @relation("StudentLeaves")
+  approvals    ApprovalStep[] @relation("ApproverUser")
+}
+
+model LeaveRequest {
+  id            Int            @id @default(autoincrement())
+  studentId     Int
+  category      LeaveCategory
+  fromDate      DateTime
+  toDate        DateTime
+  reason        String
+  documentPath  String?
+  audioPath     String?
+  status        LeaveStatus    @default(PENDING)
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  student       User           @relation("StudentLeaves", fields: [studentId], references: [id])
+  approvals     ApprovalStep[]
+  outpass       Outpass?
+
+  @@index([studentId])
+  @@index([status])
+  @@index([category])
+}
+
+model ApprovalStep {
+  id            Int            @id @default(autoincrement())
+  leaveId       Int
+  approverRole  Role
+  approverId    Int?
+  status        ApprovalStatus @default(PENDING)
+  comment       String?
+  assignedAt    DateTime       @default(now())
+  actedAt       DateTime?
+
+  // Relations
+  leave         LeaveRequest   @relation(fields: [leaveId], references: [id])
+  approver      User?          @relation("ApproverUser", fields: [approverId], references: [id])
+
+  @@index([leaveId])
+  @@index([approverRole])
+  @@index([approverId])
+  @@index([status])
+}
+
+model Outpass {
+  id          Int        @id @default(autoincrement())
+  leaveId     Int        @unique
+  tokenHash   String
+  issuedAt    DateTime   @default(now())
+  validatedAt DateTime?
+  expiresAt   DateTime?
+
+  // Relations
+  leave       LeaveRequest @relation(fields: [leaveId], references: [id])
+}
